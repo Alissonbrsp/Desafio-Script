@@ -1,0 +1,41 @@
+# Define o nome do arquivo CSV que contém a lista de usuários e departamentos
+$arquivo = "Lista.csv"
+
+# Lê o conteúdo do arquivo e processa cada linha
+Get-Content $arquivo | ForEach-Object {
+    # Divide os dados da linha usando ";" como separador
+    $dados = $_ -split ";"
+    $usuario = $dados[0]  # Nome do usuário
+    $departamento = $dados[1]  # Nome do departamento
+    $grupoAD = "SSC_" + $departamento  # Nome do grupo AD baseado no departamento
+    $senhaPadrao = "input@123"  # Senha padrão para novos usuários
+
+# Verifica se o grupo já existe no Active Directory; se não, cria o grupo
+if (-not (Get-ADGroup -Filter "Name -eq $grupoAD")) {
+    New-ADGroup -Name $grupoAD -GroupScope Global -GroupCategory Security -Description "Senai-SP - Grupo $departamento"
+}
+
+# Converte o nome do usuário para um formato adequado para o AD
+$samAccountName = ($usuario -replace "_", ".")
+    
+# Verifica se o usuário já existe no Active Directory; se não, cria o usuário
+if (-not (Get-ADUser -Filter "SamAccountName -eq '$samAccountName'")) {
+    New-ADUser -Name $usuario -SamAccountName $samAccountName `
+    -UserPrincipalName "$samAccountName@dominio.local" `
+    -GivenName ($usuario -split "_")[0] -Surname ($usuario -split "_")[1] `
+    -Department $departamento -AccountPassword (ConvertTo-SecureString -AsPlainText $senhaPadrao -Force) `
+    -PasswordNeverExpires $false -ChangePasswordAtLogon $true -Enabled $true `
+    -CannotChangePassword $false  # Garante que o usuário pode alterar a senha
+        
+    # Adiciona o usuário recém-criado ao grupo AD correspondente
+    Add-ADGroupMember -Identity $grupoAD -Members $samAccountName
+
+if (Get-ADGroupMember -Identity $grupoAD | Where-Object { $_.SamAccountName -eq $samAccountName }) {
+    Write-Host "Usuário $samAccountName adicionado ao grupo $grupoAD com sucesso."
+} else {
+    Write-Host "Erro: Usuário $samAccountName não foi adicionado ao grupo $grupoAD."
+}
+}
+
+
+
