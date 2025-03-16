@@ -1,0 +1,28 @@
+# Define o caminho do arquivo CSV contendo a lista de usuários desligados
+$csvFile = "C:\caminho_para\usuarios_desligados.csv" # Caminho do arquivo CSV
+$logFile = "C:\caminho_para\log_desativacao.txt" # Caminho do arquivo de log
+
+# Importa os dados do arquivo CSV
+$usuarios = Import-Csv -Path $csvFile
+
+# Verifica se o arquivo CSV contém usuários
+if ($usuarios.Count -eq 0) {
+    Write-Host "ERRO: O arquivo CSV está vazio."
+    Exit
+}
+
+# Percorre a lista de usuários do CSV
+foreach ($usuario in $usuarios) {
+    $nome = $usuario.usuario_desligado # Captura o nome do usuário do CSV (usuario_desligado é o cabeçalho da lista)
+    $adUser = Get-ADUser -Filter {SamAccountName -eq $nome} -ErrorAction SilentlyContinue # Busca o usuário no AD
+    
+    if ($adUser) {
+        # Desativa a conta do usuário
+        Disable-ADAccount -Identity $adUser.SamAccountName
+        # Registra a ação no arquivo de log
+        Add-Content -Path $logFile -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Usuário $nome desativado com sucesso."
+    } else {
+        # Registra erro caso o usuário não seja encontrado no AD
+        Add-Content -Path $logFile -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ERRO: Usuário $nome não encontrado no AD."
+    }
+}
