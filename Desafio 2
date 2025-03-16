@@ -1,0 +1,72 @@
+
+# Definir o período de inatividade (em dias)
+$DaysInactive = 90
+$DateThreshold = (Get-Date).AddDays(-$DaysInactive)
+
+# Obter usuários inativos há mais de 90 dias
+$InactiveUsers = Get-ADUser -Filter {LastLogonDate -lt $DateThreshold -and Enabled -eq $true} -Properties LastLogonDate
+
+# Obter computadores inativos há mais de 90 dias
+$InactiveComputers = Get-ADComputer -Filter {LastLogonDate -lt $DateThreshold} -Properties LastLogonDate
+
+
+# Criar um relatório para usuários inativos
+$UserReport = $InactiveUsers | Select-Object Name, SamAccountName, LastLogonDate, Enabled | Sort-Object LastLogonDate
+
+# Criar um relatório para computadores inativos
+$ComputerReport = $InactiveComputers | Select-Object Name, LastLogonDate, Enabled | Sort-Object LastLogonDate
+
+# Salvar relatórios em arquivos CSV
+If (-not (Test-Path -Path "C:\Relatorios")) {
+	New-Item -ItemType Directory -Path "C:\Relatorios" -Force
+}
+$UserReport | Export-Csv -Path "C:\Relatorios\UsuariosInativos.csv" -NoTypeInformation -Encoding UTF8
+$ComputerReport | Export-Csv -Path "C:\Relatorios\ComputadoresInativos.csv" -NoTypeInformation -Encoding UTF8
+
+
+# Escolher ação para usuários (Desativar ou Remover)
+$AcaoUsuario = Read-Host "Deseja Desativar ou Remover os usuários inativos?"
+
+If ($AcaoUsuario -eq "Desativar") {
+	$InactiveUsers | ForEach-Object { Disable-ADUser -Identity $_.SamAccountName }
+	Write-Host "Usuários inativos desativados."
+} ElseIf ($AcaoUsuario -eq "Remover") {
+	$InactiveUsers | ForEach-Object { Remove-ADObject -Identity $_.DistinguishedName - Confirm:$false }
+	Write-Host "Usuários inativos removidos."
+}
+
+# Escolher ação para computadores (Desativar ou Remover)
+$AcaoComputador = Read-Host "Deseja Desativar ou Remover os computadores inativos?"
+
+If ($AcaoComputador -eq "Desativar") {
+    $InactiveComputers | ForEach-Object { Disable-ADComputer -Identity $_.SamAccountName }
+    Write-Host "Computadores inativos desativados."
+} ElseIf ($AcaoComputador -eq "Remover") {
+    $InactiveComputers | ForEach-Object { Remove-ADObject -Identity $_.DistinguishedName -Confirm:$false }
+    Write-Host "Computadores inativos removidos."
+}
+
+
+# Configurar informações do e-mail
+$AdminEmail = "administrator@exemplo.local"
+$FromEmail = "notificacoes@exemplo.local"
+$SMTPServer = "smtp.exemplo.local"
+
+$AcaoUsuario = $AcaoUsuario ?? "Nenhuma"
+$AcaoComputador = $AcaoComputador ?? "Nenhuma"
+
+# Corpo do e-mail
+$EmailBody = @"
+Relatorio de Contas Inativas
+Usuarios Inativos: $($UserReport.Count)
+Computadores Inativos: $($ComputerReport.Count)
+Acao realizada:
+Usuarios - $AcaoUsuario
+Computadores - $AcaoComputador
+Os relatorios detalhados estao anexados.
+"@
+
+# Enviar e-mail com os relatórios anexados
+Send-MailMessage -To $AdminEmail -From $FromEmail -Subject "Relatorio de Contas Inativas" `
+-Body $EmailBody -SmtpServer $SMTPServer -Attachments `
+"C:\Relatorios\UsuariosInativos.csv", "C:\Relatorios\ComputadoresInativos.csv"
